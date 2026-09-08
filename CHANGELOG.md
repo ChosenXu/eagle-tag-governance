@@ -6,6 +6,18 @@ All notable changes to this skill are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 格式参考 Keep a Changelog，版本号遵循语义化版本（SemVer）。
 
+## [1.0.3] - 2026-09-08
+
+### Fixed / 修复
+
+- Gotchas guidance corrected (verified on a scratch library): duplicate-named tags created by a mis-aimed API rename are merged automatically when the library is re-opened (forced re-index) — they usually do **not** require manual UI merging. The Eagle tag panel lists tags per object and is the authoritative object count.
+  修正排障文档口径（一次性库实测验证）：误向 API rename 产生的同名标签会在**重开库/重索引时被 Eagle 自动合并**，通常**无需**手动 UI 合并；Eagle 标签面板按对象展示，是对象数目的权威口径。
+
+### Notes / 说明
+
+- Version bumped 1.0.2 → 1.0.3 (PATCH: documentation only). Client info and the `--skill-version` default are updated to match; no code changes.
+  版本 1.0.2 → 1.0.3（PATCH：纯文档）；clientInfo 与 `--skill-version` 默认值同步更新；无代码改动。
+
 ## [1.0.2] - 2026-09-08
 
 ### Fixed / 修复
