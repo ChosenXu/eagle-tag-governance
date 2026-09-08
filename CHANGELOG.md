@@ -6,6 +6,43 @@ All notable changes to this skill are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 格式参考 Keep a Changelog，版本号遵循语义化版本（SemVer）。
 
+## [1.0.1] - 2026-09-08
+
+### Added / 新增
+
+- Per-operation success verification: parse each op's `affectedItems` from the live proxy response instead of trusting the batch-level `isError` flag (which stays `false` even for silent no-op merges).
+  单操作级成功校验：解析代理实时响应中每个操作的 `affectedItems`，不再信任批次级 `isError`（静默 no-op 合并时它仍为 `false`）。
+- Auto-create missing merge targets by renaming one source into each missing target before merging the remaining sources.
+  合并前自动创建缺失的目标标签：先把其一个源标签改名为目标名，再合并其余源。
+- Back-off retry for merges that report `affectedItems: 0` while their source actually has items.
+  对「`affectedItems` 为 0 但源标签非空」的合并按退避策略自动重试。
+- Duplicate-named tag detection after writes (a mis-aimed rename that copied instead of folded is flagged `CRITICAL`).
+  写入后检测同名标签对象（误向 rename 复制而非折叠会被标记为 `CRITICAL`）。
+- Offline `--selftest` mode for the parsers (no Eagle connection required).
+  新增离线 `--selftest` 自检模式（无需连接 Eagle）。
+
+### Fixed / 修复
+
+- `tag_merge` could report success while moving 0 items when the target tag was created via the API in the same session (silent no-op); it is now retried with back-off and, if still empty, surfaced as `ZERO-MOVE`.
+  修复 `tag_merge` 在「目标为本会话内由 API 新建」时假成功（实际移动 0 项）的静默失败——现在会退避重试，仍失败则上报 `ZERO-MOVE`。
+- `tag_update` renaming a source onto an existing tag name duplicated the tag instead of merging into it; the run now flags the resulting duplicate names.
+  修复 `tag_update` 把源标签改名为已存在标签名时复制出同名对象而非合并——现在会标记产生的同名标签。
+- Verification no longer labels a possibly-stale tag index as a write failure; only live per-op verdicts (`ZERO-MOVE` / error) or detected duplicates set the failure outcome.
+  校验不再把可能陈旧的标签索引误判为写入失败；仅以实时单操作判定（`ZERO-MOVE` / 报错）或检测到的同名标签作为失败依据。
+- The process now exits non-zero when any op fails to verify or duplicate tag names are found, so automation can rely on the exit code.
+  任一操作未通过校验或发现同名标签时，进程以非零码退出，自动化可直接依据退出码判断。
+- `--selftest` checks are now individually caught and counted instead of aborting on the first assertion.
+  修复 `--selftest`：各检查项独立捕获并累计失败数，而非在首个断言处中断。
+
+### Notes / 说明
+
+- Version bumped 1.0.0 → 1.0.1 (PATCH: reliability hardening plus documentation). Client info and the `--skill-version` default are updated to match.
+  版本 1.0.0 → 1.0.1（PATCH：可靠性加固＋文档）；clientInfo 与 `--skill-version` 默认值已同步更新。
+- `references/gotchas.md` gains two troubleshooting sections: the WorkBuddy array-param harness quirk and the silent session-created-target failures (Symptoms A/B with real-library evidence).
+  `references/gotchas.md` 新增两节排障文档：WorkBuddy 工具包装层拒收数组参数、会话内新建标签上的静默失败（A/B 症状，含真实库证据）。
+- Known limitation: silent failures on session-created targets cannot be fully defeated from code — if the output shows `ZERO-MOVE` or `CRITICAL: duplicate tag names`, finish the remaining merges in the Eagle UI.
+  已知限制：会话内新建标签上的静默失败无法完全用代码绕过——输出出现 `ZERO-MOVE` 或 `CRITICAL` 同名提示时，剩余合并请在 Eagle 界面手动完成。
+
 ## [1.0.0] - 2026-09-07
 
 ### Added / 新增
