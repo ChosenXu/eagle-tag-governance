@@ -6,6 +6,22 @@ All notable changes to this skill are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 格式参考 Keep a Changelog，版本号遵循语义化版本（SemVer）。
 
+## [1.0.2] - 2026-09-08
+
+### Fixed / 修复
+
+- The summary `verified_ok` now counts successfully applied renames as well as removed merge sources, so `requested` and `verified_ok` are symmetric for rename-only plans; a rename whose target got duplicated is excluded and surfaced by the duplicate-name check instead.
+  修复汇总指标：`verified_ok` 现同时统计成功应用的 rename 与消失的 merge 源——纯 rename 计划下 `requested` 与 `verified_ok` 对称；目标被复制（重名）的 rename 不计入成功，改由重名检测提示。
+- Renames that do not verify are now printed individually (`UNVERIFIED <old> -> <new>`) with the live per-op verdict and a stale-index hint, instead of only appearing in the exit code.
+  未通过校验的 rename 现在逐条打印（`UNVERIFIED <旧名> -> <新名>`），附实时单操作判定与陈旧索引提示，而不再仅体现在退出码。
+
+### Notes / 说明
+
+- Version bumped 1.0.1 → 1.0.2 (PATCH). Client info and the `--skill-version` default are updated to match.
+  版本 1.0.1 → 1.0.2（PATCH）；clientInfo 与 `--skill-version` 默认值同步更新。
+- Write behavior is unchanged; this release only aligns the summary metrics and messages with the per-op verdicts introduced in 1.0.1.
+  写入行为无变化；本版仅对齐汇总指标与提示文案，与 1.0.1 引入的单操作判定保持一致。
+
 ## [1.0.1] - 2026-09-08
 
 ### Added / 新增

@@ -35,7 +35,7 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--plan", required=True, help="reviewed merge_plan.json")
     ap.add_argument("--output", default="tag_undo_mapping.json", help="path to write the undo map")
-    ap.add_argument("--skill-version", default="1.0.1", help="skill version for the record")
+    ap.add_argument("--skill-version", default="1.0.2", help="skill version for the record")
     args = ap.parse_args()
 
     with open(args.plan, encoding="utf-8") as f:

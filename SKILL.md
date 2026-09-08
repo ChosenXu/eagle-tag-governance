@@ -2,7 +2,7 @@
 name: eagle-tag-governance
 description: Use when the user wants to merge, normalize, rename, dedupe, or retire existing Eagle tags / the tag vocabulary (via the eagle-mcp connector). Triggers on mentions of Eagle, eagle-mcp, or tag-governance intents like 合并标签 / 整理标签 / 标签太乱 / 同义标签 / 重命名标签 / 规范化标签 / 清理标签词表 / 标签去重 / 低频标签清理 / 退役无用标签. Does NOT trigger for untagged-asset naming, tagging, or annotation — those are handled by eagle-untagged-organizer.
 agent_created: true
-version: 1.0.1
+version: 1.0.2
 ---
 
 # Eagle Tag Governance

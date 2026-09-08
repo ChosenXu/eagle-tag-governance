@@ -102,7 +102,7 @@ class MCPClient:
             "jsonrpc": "2.0", "id": rid, "method": "initialize",
             "params": {
                 "protocolVersion": "2024-11-05", "capabilities": {},
-                "clientInfo": {"name": "eagle-tag-governance", "version": "1.0.1"},
+                "clientInfo": {"name": "eagle-tag-governance", "version": "1.0.2"},
             },
         })
         init = self._wait(rid, 30)
@@ -511,7 +511,30 @@ def main():
             print("\nCRITICAL: duplicate tag names detected (rename copied, not merged):")
             for n in dups:
                 print(f"  - {n!r} appears {after_occ[n]} times; merge manually in Eagle UI")
-        total_ok = len(removed)
+        # Account for explicit renames so the summary is symmetric with
+        # `requested` (merges + renames). A rename is verified when its oldName
+        # is gone, its newName exists, and that newName is not duplicated
+        # (a duplicated target means the rename copied instead of folding).
+        if renames:
+            dup_names = set(dups)
+            verified_rn = [r for r in renames
+                           if r["oldName"] not in after and r["newName"] in after
+                           and r["newName"] not in dup_names]
+            print(f"VERIFY  renames applied : {len(verified_rn)}/{len(renames)}")
+            for r in renames:
+                if r not in verified_rn:
+                    st = op_status.get(r["oldName"])
+                    if r["newName"] in dup_names:
+                        hint = "duplicate target (rename copied, not merged)"
+                    elif st in ("OK", "OK?"):
+                        hint = "stale index? per-op OK"
+                    else:
+                        hint = "op did not verify"
+                    print(f"  UNVERIFIED {r['oldName']!r} -> {r['newName']!r} "
+                          f"({hint}; per-op={st})")
+            total_ok = len(removed) + len(verified_rn)
+        else:
+            total_ok = len(removed)
 
     client.close()
     failed_ops = sorted(k for k, v in op_status.items() if v in ("ZERO-MOVE", "ERR"))
