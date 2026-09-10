@@ -2,7 +2,7 @@
 
 [English](../README.md) | 简体中文
 
-一个符合 [Agent Skills](https://agentskills.io) 开放标准的 Skill，通过 `eagle-mcp` MCP 服务器治理 [Eagle](https://eagle.cool/) 素材库的**标签词表**——合并、重命名、规范化、去重与退役已有标签，让标签体系保持干净一致。可在任何兼容 Agent Skills 标准的 AI Agent 中运行（WorkBuddy、Claude Code、Cursor、Codex、Gemini CLI、GitHub Copilot 等）。
+一个符合 [Agent Skills](https://agentskills.io) 开放标准的 Skill，通过 `eagle-mcp` MCP 服务器治理 [Eagle](https://eagle.cool/) 素材库的**标签词表**——合并、重命名、规范化、去重与退役已有标签，让标签体系保持干净一致。可在任何兼容 Agent Skills 标准的 AI Agent 中运行（Claude Code、Codex CLI、Gemini CLI、GitHub Copilot、Cursor、WorkBuddy 等）。
 
 ## 它能做什么
 
@@ -26,45 +26,54 @@
 
 将 Skill 文件夹安装到你的 AI Agent 的 skills 目录：
 
-| Agent | 用户级 skills 目录 | MCP 配置文件 |
+| Agent | 用户级目录 | 项目级目录 |
 |---|---|---|
-| WorkBuddy | `~/.workbuddy/skills/` | `~/.workbuddy/mcp.json` |
-| Claude Code | `~/.claude/skills/` | `.mcp.json` 或 `claude mcp add` |
-| Cursor | `~/.cursor/skills/`（也会读取 `~/.claude/skills/`） | `~/.cursor/mcp.json` |
-| Codex CLI | `~/.agents/skills/` | `~/.codex/config.toml` |
-| Gemini CLI | `~/.gemini/skills/`（别名 `~/.agents/skills/`） | `~/.gemini/settings.json` |
-| GitHub Copilot | `~/.copilot/skills/`（别名 `~/.agents/skills/`） | `~/.copilot/mcp-config.json` |
+| Claude Code | `~/.claude/skills/` | `.claude/skills/` |
+| Codex CLI | `~/.agents/skills/` | `.agents/skills/` |
+| Gemini CLI | `~/.gemini/skills/` | `.gemini/skills/` |
+| GitHub Copilot | `~/.copilot/skills/` | `.github/skills/` |
+| Cursor | `~/.cursor/skills/` | `.cursor/skills/` |
+| WorkBuddy | `~/.workbuddy/skills/` | — |
 
-> 提示：Codex CLI、Gemini CLI、GitHub Copilot 与 Cursor 都会读取 `~/.agents/skills/` 互操作别名目录——安装到此处，四个平台可同时发现本 Skill。
+提示：`~/.agents/skills/` 是跨平台通用目录——Codex CLI、Gemini CLI、GitHub Copilot 与 Cursor 均原生读取，Claude Code 也会作为兜底路径扫描。一处安装，多平台发现。
 
 ```bash
 git clone https://github.com/ChosenXu/eagle-tag-governance.git \
-  <skills目录>/eagle-tag-governance
+  ~/.agents/skills/eagle-tag-governance
 ```
 
-或手动将文件夹复制到你所用 Agent 的 skills 目录。
+或手动将文件夹复制到上表任意目录。
 
 ## 前置条件
 
 - Eagle 桌面应用必须处于运行状态。
-- `eagle-mcp` 必须在你的 Agent 的 MCP 配置中注册为 stdio MCP 服务器：
+- `eagle-mcp`（Eagle 官方插件内置的 stdio MCP 服务器）须注册到你的 Agent 的 MCP 配置中：
 
 ```json
 {
   "mcpServers": {
     "eagle-mcp": {
       "command": "node",
-      "args": ["<用户目录>/Library/Application Support/Eagle/Plugins/mcp-server/modules/mcp-proxy.js"]
+      "args": ["<home>/Library/Application Support/Eagle/Plugins/mcp-server/modules/mcp-proxy.js"]
     }
   }
 }
 ```
 
-> Codex CLI 使用 TOML 格式：在 `~/.codex/config.toml` 中添加 `[mcp_servers.eagle-mcp]`，设 `command = "node"`、`args = ["<用户目录>/Library/Application Support/Eagle/Plugins/mcp-server/modules/mcp-proxy.js"]`。
+| Agent | MCP 配置 |
+|---|---|
+| Claude Code | `claude mcp add`（用户级）或项目 `.mcp.json` |
+| Codex CLI | `~/.codex/config.toml` → `[mcp_servers.eagle-mcp]` |
+| Gemini CLI | `~/.gemini/settings.json` → `mcpServers` |
+| GitHub Copilot | `~/.copilot/mcp-config.json`（`"type": "local"`）或仓库根 `.mcp.json` |
+| Cursor | `~/.cursor/mcp.json` |
+| WorkBuddy | `~/.workbuddy/mcp.json` → `mcpServers` |
+
+> Codex CLI 使用 TOML 格式：在 `~/.codex/config.toml` 中添加 `[mcp_servers.eagle-mcp]`，设 `command = "node"`、`args = ["<home>/Library/Application Support/Eagle/Plugins/mcp-server/modules/mcp-proxy.js"]`。
 >
-> Gemini CLI 使用与上方相同的 `mcpServers` JSON 结构，写入 `~/.gemini/settings.json`（或执行 `gemini mcp add -s user eagle-mcp node "<用户目录>/Library/Application Support/Eagle/Plugins/mcp-server/modules/mcp-proxy.js"`）。
+> Gemini CLI 使用与上方相同的 `mcpServers` JSON 结构，写入 `~/.gemini/settings.json`（或执行 `gemini mcp add -s user eagle-mcp node "<home>/Library/Application Support/Eagle/Plugins/mcp-server/modules/mcp-proxy.js"`）。
 >
-> GitHub Copilot：将同一服务器以 `"type": "local"` 加入 `~/.copilot/mcp-config.json`（或执行 `copilot mcp add eagle-mcp -- node "<用户目录>/Library/Application Support/Eagle/Plugins/mcp-server/modules/mcp-proxy.js"`）。
+> GitHub Copilot：将同一服务器以 `"type": "local"` 加入 `~/.copilot/mcp-config.json`（或执行 `copilot mcp add eagle-mcp -- node "<home>/Library/Application Support/Eagle/Plugins/mcp-server/modules/mcp-proxy.js"`）。
 
 ## 用法
 

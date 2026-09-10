@@ -2,7 +2,7 @@
 
 English | [简体中文](readme/README.zh-CN.md)
 
-An [Agent Skills](https://agentskills.io)-standard skill that governs the **tag vocabulary** of an [Eagle](https://eagle.cool/) library via the `eagle-mcp` MCP server — merging, renaming, normalizing, deduplicating, and retiring existing tags so the taxonomy stays clean and consistent. It runs in any Agent Skills-compatible AI agent (WorkBuddy, Claude Code, Cursor, Codex, Gemini CLI, GitHub Copilot, …).
+An [Agent Skills](https://agentskills.io)-standard skill that governs the **tag vocabulary** of an [Eagle](https://eagle.cool/) library via the `eagle-mcp` MCP server — merging, renaming, normalizing, deduplicating, and retiring existing tags so the taxonomy stays clean and consistent. It runs in any Agent Skills-compatible AI agent (Claude Code, Codex CLI, Gemini CLI, GitHub Copilot, Cursor, WorkBuddy, …).
 
 ## What it does
 
@@ -26,28 +26,28 @@ Instead of looking at individual assets, this skill works on the *tag list itsel
 
 Install the skill folder into your AI agent's skills directory:
 
-| Agent | User-level skills dir | MCP config file |
+| Agent | User-level directory | Project-level directory |
 |---|---|---|
-| WorkBuddy | `~/.workbuddy/skills/` | `~/.workbuddy/mcp.json` |
-| Claude Code | `~/.claude/skills/` | `.mcp.json` or `claude mcp add` |
-| Cursor | `~/.cursor/skills/` (also reads `~/.claude/skills/`) | `~/.cursor/mcp.json` |
-| Codex CLI | `~/.agents/skills/` | `~/.codex/config.toml` |
-| Gemini CLI | `~/.gemini/skills/` (alias `~/.agents/skills/`) | `~/.gemini/settings.json` |
-| GitHub Copilot | `~/.copilot/skills/` (alias `~/.agents/skills/`) | `~/.copilot/mcp-config.json` |
+| Claude Code | `~/.claude/skills/` | `.claude/skills/` |
+| Codex CLI | `~/.agents/skills/` | `.agents/skills/` |
+| Gemini CLI | `~/.gemini/skills/` | `.gemini/skills/` |
+| GitHub Copilot | `~/.copilot/skills/` | `.github/skills/` |
+| Cursor | `~/.cursor/skills/` | `.cursor/skills/` |
+| WorkBuddy | `~/.workbuddy/skills/` | — |
 
-> Tip: Codex CLI, Gemini CLI, GitHub Copilot, and Cursor all read the `~/.agents/skills/` interop alias — installing there makes the skill discoverable by all four at once.
+Tip: `~/.agents/skills/` is the cross-agent directory — Codex CLI, Gemini CLI, GitHub Copilot, and Cursor read it natively, and Claude Code scans it as a fallback too. One install, discovered by multiple agents.
 
 ```bash
 git clone https://github.com/ChosenXu/eagle-tag-governance.git \
-  <skills-dir>/eagle-tag-governance
+  ~/.agents/skills/eagle-tag-governance
 ```
 
-Or copy the folder manually into the skills directory of your agent.
+Or copy the folder manually into any of the directories above.
 
 ## Prerequisites
 
 - The Eagle desktop app must be running.
-- `eagle-mcp` must be registered as a stdio MCP server in your agent's MCP config:
+- `eagle-mcp` (the stdio MCP server bundled with Eagle's official plugin) must be registered in your agent's MCP configuration:
 
 ```json
 {
@@ -59,6 +59,15 @@ Or copy the folder manually into the skills directory of your agent.
   }
 }
 ```
+
+| Agent | MCP configuration |
+|---|---|
+| Claude Code | `claude mcp add` (user scope) or project `.mcp.json` |
+| Codex CLI | `~/.codex/config.toml` → `[mcp_servers.eagle-mcp]` |
+| Gemini CLI | `~/.gemini/settings.json` → `mcpServers` |
+| GitHub Copilot | `~/.copilot/mcp-config.json` (`"type": "local"`) or repo-root `.mcp.json` |
+| Cursor | `~/.cursor/mcp.json` |
+| WorkBuddy | `~/.workbuddy/mcp.json` → `mcpServers` |
 
 > Codex CLI uses TOML instead: in `~/.codex/config.toml`, add `[mcp_servers.eagle-mcp]` with `command = "node"` and `args = ["<home>/Library/Application Support/Eagle/Plugins/mcp-server/modules/mcp-proxy.js"]`.
 >

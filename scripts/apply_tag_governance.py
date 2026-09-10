@@ -102,7 +102,7 @@ class MCPClient:
             "jsonrpc": "2.0", "id": rid, "method": "initialize",
             "params": {
                 "protocolVersion": "2024-11-05", "capabilities": {},
-                "clientInfo": {"name": "eagle-tag-governance", "version": "1.0.5"},
+                "clientInfo": {"name": "eagle-tag-governance", "version": "1.0.6"},
             },
         })
         init = self._wait(rid, 30)

@@ -6,6 +6,20 @@ All notable changes to this skill are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 格式参考 Keep a Changelog，版本号遵循语义化版本（SemVer）。
 
+## [1.0.6] - 2026-09-10
+
+### Changed / 变更
+
+- README consistency unification across the three sibling repositories (`eagle-tag-governance`, `eagle-untagged-organizer`, `raindrop-bookmark-organizer`): the Install table now uses the shared two-column layout (user-level + project-level) with the fixed agent row order (Claude Code / Codex CLI / Gemini CLI / GitHub Copilot / Cursor / WorkBuddy); the clone example targets `~/.agents/skills/` and the interop tip is aligned with the other READMEs; the platform listing in the intro follows the same order.
+  三仓库（`eagle-tag-governance`、`eagle-untagged-organizer`、`raindrop-bookmark-organizer`）README 一致性统一：安装表改为通用双列布局（用户级 + 项目级），Agent 行序固定（Claude Code / Codex CLI / Gemini CLI / GitHub Copilot / Cursor / WorkBuddy）；clone 示例指向 `~/.agents/skills/`，互操作提示与另两仓对齐；开篇平台列举同步同序。
+- Prerequisites gained a shared MCP configuration table (same content as `eagle-untagged-organizer`), and the `eagle-mcp` bullet wording is unified ("the stdio MCP server bundled with Eagle's official plugin").
+  前置条件新增共用 MCP 配置表（与 `eagle-untagged-organizer` 同内容），`eagle-mcp` 描述统一为「Eagle 官方插件内置的 stdio MCP 服务器」。
+
+### Notes / 说明
+
+- Version bumped 1.0.5 → 1.0.6 (PATCH: documentation only). Client info and the `--skill-version` default are updated to match; no workflow or write-behavior changes.
+  版本 1.0.5 → 1.0.6（PATCH：纯文档）；clientInfo 与 `--skill-version` 默认值同步更新；工作流与写入行为无任何变化。
+
 ## [1.0.5] - 2026-09-10
 
 ### Changed / 变更
