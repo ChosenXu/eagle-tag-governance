@@ -1,6 +1,6 @@
 # Eagle Tag Governance
 
-[English](README.md) | [简体中文](README.zh-CN.md)
+[English](../README.md) | 简体中文
 
 一个 [WorkBuddy](https://www.workbuddy.cn/) Skill，通过 `eagle-mcp` 连接器治理 [Eagle](https://eagle.cool/) 素材库的**标签词表**——合并、重命名、规范化、去重与退役已有标签，让标签体系保持干净一致。
 
@@ -40,7 +40,7 @@ git clone https://github.com/ChosenXu/eagle-tag-governance.git \
 
 ## 用法
 
-提及 Eagle / `eagle-mcp` / 标签清理意图，如「合并标签」「整理标签」「规范化标签」「清理标签词表」，Skill 即驱动工作流。完整流程见 [`SKILL.md`](SKILL.md)（预检 → 扫描 → 识别 → 干跑 → 授权 → 执行 → 校验）。
+提及 Eagle / `eagle-mcp` / 标签清理意图，如「合并标签」「整理标签」「规范化标签」「清理标签词表」，Skill 即驱动工作流。完整流程见 [`SKILL.md`](../SKILL.md)（预检 → 扫描 → 识别 → 干跑 → 授权 → 执行 → 校验）。
 
 > 如需为**未打标签素材**命名 / 打标签 / 写标注，请改用 [`eagle-untagged-organizer`](https://github.com/ChosenXu/eagle-untagged-organizer)。两个 Skill 相互独立。
 
@@ -67,4 +67,4 @@ scripts/
 
 ## 许可证
 
-[MIT](LICENSE)
+[MIT](../LICENSE)

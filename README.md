@@ -1,6 +1,6 @@
 # Eagle Tag Governance
 
-[English](README.md) | [简体中文](README.zh-CN.md)
+English | [简体中文](readme/README.zh-CN.md)
 
 A [WorkBuddy](https://www.workbuddy.cn/) skill that governs the **tag vocabulary** of an [Eagle](https://eagle.cool/) library via the `eagle-mcp` connector — merging, renaming, normalizing, deduplicating, and retiring existing tags so the taxonomy stays clean and consistent.
 
