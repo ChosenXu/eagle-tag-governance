@@ -2,7 +2,7 @@
 
 English | [简体中文](readme/README.zh-CN.md)
 
-An [Agent Skills](https://agentskills.io)-standard skill that governs the **tag vocabulary** of an [Eagle](https://eagle.cool/) library via the `eagle-mcp` MCP server — merging, renaming, normalizing, deduplicating, and retiring existing tags so the taxonomy stays clean and consistent. It runs in any Agent Skills-compatible AI agent (WorkBuddy, Claude Code, Cursor, Codex, …).
+An [Agent Skills](https://agentskills.io)-standard skill that governs the **tag vocabulary** of an [Eagle](https://eagle.cool/) library via the `eagle-mcp` MCP server — merging, renaming, normalizing, deduplicating, and retiring existing tags so the taxonomy stays clean and consistent. It runs in any Agent Skills-compatible AI agent (WorkBuddy, Claude Code, Cursor, Codex, Gemini CLI, GitHub Copilot, …).
 
 ## What it does
 
@@ -32,6 +32,10 @@ Install the skill folder into your AI agent's skills directory:
 | Claude Code | `~/.claude/skills/` | `.mcp.json` or `claude mcp add` |
 | Cursor | `~/.cursor/skills/` (also reads `~/.claude/skills/`) | `~/.cursor/mcp.json` |
 | Codex CLI | `~/.agents/skills/` | `~/.codex/config.toml` |
+| Gemini CLI | `~/.gemini/skills/` (alias `~/.agents/skills/`) | `~/.gemini/settings.json` |
+| GitHub Copilot | `~/.copilot/skills/` (alias `~/.agents/skills/`) | `~/.copilot/mcp-config.json` |
+
+> Tip: Codex CLI, Gemini CLI, GitHub Copilot, and Cursor all read the `~/.agents/skills/` interop alias — installing there makes the skill discoverable by all four at once.
 
 ```bash
 git clone https://github.com/ChosenXu/eagle-tag-governance.git \
@@ -57,6 +61,10 @@ Or copy the folder manually into the skills directory of your agent.
 ```
 
 > Codex CLI uses TOML instead: in `~/.codex/config.toml`, add `[mcp_servers.eagle-mcp]` with `command = "node"` and `args = ["<home>/Library/Application Support/Eagle/Plugins/mcp-server/modules/mcp-proxy.js"]`.
+>
+> Gemini CLI uses the same `mcpServers` JSON structure shown above in `~/.gemini/settings.json` (or run `gemini mcp add -s user eagle-mcp node "<home>/Library/Application Support/Eagle/Plugins/mcp-server/modules/mcp-proxy.js"`).
+>
+> GitHub Copilot: add the same server to `~/.copilot/mcp-config.json` with `"type": "local"` (or run `copilot mcp add eagle-mcp -- node "<home>/Library/Application Support/Eagle/Plugins/mcp-server/modules/mcp-proxy.js"`).
 
 ## Usage
 

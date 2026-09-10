@@ -6,6 +6,20 @@ All notable changes to this skill are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 格式参考 Keep a Changelog，版本号遵循语义化版本（SemVer）。
 
+## [1.0.5] - 2026-09-10
+
+### Changed / 变更
+
+- Per-platform documentation extended to Gemini CLI and GitHub Copilot: the README install table gained rows for both (skills directories and MCP config files), the prerequisites section gained their `eagle-mcp` registration commands (`~/.gemini/settings.json` / `gemini mcp add`; `~/.copilot/mcp-config.json` / `copilot mcp add`), and platform listings in the README intro and SKILL.md prerequisites now include both.
+  分平台文档扩展至 Gemini CLI 与 GitHub Copilot：README 安装表新增两行（skills 目录与 MCP 配置文件），前置条件补充两家的 `eagle-mcp` 注册方式（`~/.gemini/settings.json` / `gemini mcp add`；`~/.copilot/mcp-config.json` / `copilot mcp add`），README 开篇与 SKILL.md 前置条件的平台列举同步收录。
+- Install section now notes the `~/.agents/skills/` interop alias: Codex CLI, Gemini CLI, GitHub Copilot, and Cursor all read it, so one install location serves all four.
+  安装章节新增 `~/.agents/skills/` 互操作别名说明：Codex CLI、Gemini CLI、GitHub Copilot 与 Cursor 均读取该目录，一处安装四平台同时发现。
+
+### Notes / 说明
+
+- Version bumped 1.0.4 → 1.0.5 (PATCH: documentation only). Client info and the `--skill-version` default are updated to match; no workflow or write-behavior changes.
+  版本 1.0.4 → 1.0.5（PATCH：纯文档）；clientInfo 与 `--skill-version` 默认值同步更新；工作流与写入行为无任何变化。
+
 ## [1.0.4] - 2026-09-10
 
 ### Changed / 变更
