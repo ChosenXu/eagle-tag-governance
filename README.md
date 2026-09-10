@@ -2,7 +2,7 @@
 
 English | [简体中文](readme/README.zh-CN.md)
 
-A [WorkBuddy](https://www.workbuddy.cn/) skill that governs the **tag vocabulary** of an [Eagle](https://eagle.cool/) library via the `eagle-mcp` connector — merging, renaming, normalizing, deduplicating, and retiring existing tags so the taxonomy stays clean and consistent.
+An [Agent Skills](https://agentskills.io)-standard skill that governs the **tag vocabulary** of an [Eagle](https://eagle.cool/) library via the `eagle-mcp` MCP server — merging, renaming, normalizing, deduplicating, and retiring existing tags so the taxonomy stays clean and consistent. It runs in any Agent Skills-compatible AI agent (WorkBuddy, Claude Code, Cursor, Codex, …).
 
 ## What it does
 
@@ -24,19 +24,39 @@ Instead of looking at individual assets, this skill works on the *tag list itsel
 
 ## Install
 
-Clone this repository into your WorkBuddy skills directory:
+Install the skill folder into your AI agent's skills directory:
+
+| Agent | User-level skills dir | MCP config file |
+|---|---|---|
+| WorkBuddy | `~/.workbuddy/skills/` | `~/.workbuddy/mcp.json` |
+| Claude Code | `~/.claude/skills/` | `.mcp.json` or `claude mcp add` |
+| Cursor | `~/.cursor/skills/` (also reads `~/.claude/skills/`) | `~/.cursor/mcp.json` |
+| Codex CLI | `~/.agents/skills/` | `~/.codex/config.toml` |
 
 ```bash
 git clone https://github.com/ChosenXu/eagle-tag-governance.git \
-  ~/.workbuddy/skills/eagle-tag-governance
+  <skills-dir>/eagle-tag-governance
 ```
 
-Or copy the folder manually into `~/.workbuddy/skills/`.
+Or copy the folder manually into the skills directory of your agent.
 
 ## Prerequisites
 
 - The Eagle desktop app must be running.
-- `eagle-mcp` must be configured in `~/.workbuddy/mcp.json` and trusted in the connector panel.
+- `eagle-mcp` must be registered as a stdio MCP server in your agent's MCP config:
+
+```json
+{
+  "mcpServers": {
+    "eagle-mcp": {
+      "command": "node",
+      "args": ["<home>/Library/Application Support/Eagle/Plugins/mcp-server/modules/mcp-proxy.js"]
+    }
+  }
+}
+```
+
+> Codex CLI uses TOML instead: in `~/.codex/config.toml`, add `[mcp_servers.eagle-mcp]` with `command = "node"` and `args = ["<home>/Library/Application Support/Eagle/Plugins/mcp-server/modules/mcp-proxy.js"]`.
 
 ## Usage
 

@@ -2,7 +2,7 @@
 name: eagle-tag-governance
 description: Use when the user wants to merge, normalize, rename, dedupe, or retire existing Eagle tags / the tag vocabulary (via the eagle-mcp connector). Triggers on mentions of Eagle, eagle-mcp, or tag-governance intents like 合并标签 / 整理标签 / 标签太乱 / 同义标签 / 重命名标签 / 规范化标签 / 清理标签词表 / 标签去重 / 低频标签清理 / 退役无用标签. Does NOT trigger for untagged-asset naming, tagging, or annotation — those are handled by eagle-untagged-organizer.
 agent_created: true
-version: 1.0.3
+version: 1.0.4
 ---
 
 # Eagle Tag Governance
@@ -52,7 +52,7 @@ Plan explanations (the human-readable summary) follow the user's instruction lan
 ## Prerequisites
 
 - Eagle desktop app must be running, because `eagle-mcp` is a proxy that connects to Eagle itself.
-- `eagle-mcp` must be configured in `~/.workbuddy/mcp.json` under `mcpServers` and trusted in the connector panel.
+- `eagle-mcp` must be registered as a stdio MCP server in your AI agent's MCP configuration (`command: node`, `args: ["<Eagle plugin dir>/mcp-server/modules/mcp-proxy.js"]`). See the README for per-platform config examples (WorkBuddy / Claude Code / Cursor / Codex).
 - The connector must expose the **tag** tools. The core tools used by this skill are `tag_get`, `tag_count`, `tag_merge`, and `tag_update`. Optional group tools: `tag_group_get` / `tag_group_create` / `tag_group_update` / `tag_group_delete` / `tag_group_add_tags` / `tag_group_remove_tags`. Optional cross-check tools: `item_get` / `item_count` / `item_query` / `item_remove_tags`. This skill does **not** use asset-write tools such as `item_update` or `item_add`.
 
 ## Supporting Files
@@ -90,7 +90,7 @@ Small plans can be applied with direct tool calls; see `references/gotchas.md` f
 ### Phase 0 — Pre-flight checks (must pass before any writes)
 
 **Step 0a. Connection check.**
-- Confirm `eagle-mcp` is configured under `mcpServers` in `~/.workbuddy/mcp.json` and Eagle is running. Test the connection if needed.
+- Confirm `eagle-mcp` is registered as an MCP server in your agent's MCP configuration and Eagle is running. Test the connection (e.g. call `tag_count`) if needed.
 
 **Step 0b. Tag-tool readiness probe (once per environment).**
 - Call `tag_get` to confirm it returns the full tag vocabulary with usage counts, and `tag_count` to confirm a total count. The two cross-validate that the environment is healthy.

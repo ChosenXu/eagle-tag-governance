@@ -6,6 +6,22 @@ All notable changes to this skill are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 格式参考 Keep a Changelog，版本号遵循语义化版本（SemVer）。
 
+## [1.0.4] - 2026-09-10
+
+### Changed / 变更
+
+- README restructured for cross-platform use: intro now presents the skill as Agent Skills-standard (not WorkBuddy-specific), and Install / Prerequisites gained a per-platform table (WorkBuddy / Claude Code / Cursor / Codex) covering skills directories and `eagle-mcp` MCP config, with a JSON config example (plus a TOML variant for Codex).
+  README 面向跨平台重构：开篇改为「符合 Agent Skills 标准」的定位（不再是 WorkBuddy 专属），安装/前置条件新增四平台对照表（WorkBuddy / Claude Code / Cursor / Codex），覆盖 skills 目录与 `eagle-mcp` 配置，附 JSON 配置示例（Codex 另附 TOML 写法）。
+- SKILL.md prerequisites and Phase 0a no longer reference `~/.workbuddy/mcp.json` or the WorkBuddy connector panel — they now describe generic MCP registration and point to the README's per-platform examples.
+  SKILL.md 前置条件与 Phase 0a 不再指向 `~/.workbuddy/mcp.json` 与 WorkBuddy 连接器面板，改为通用 MCP 注册描述，并指向 README 的分平台示例。
+- Gotchas wording generalized from "WorkBuddy MCP wrapper / harness" to "host agent's tool-calling layer"; the array-param schema rule and the serialization-quirk workaround (drive writes through `apply_tag_governance.py`) are unchanged in substance.
+  排障文档措辞泛化：「WorkBuddy MCP wrapper / harness」改为「宿主 Agent 的工具调用层」；数组参数 schema 规则与序列化缺陷绕行方案（改走 `apply_tag_governance.py`）实质不变。
+
+### Notes / 说明
+
+- Version bumped 1.0.3 → 1.0.4 (PATCH: documentation wording only). Client info and the `--skill-version` default are updated to match; no workflow or write-behavior changes.
+  版本 1.0.3 → 1.0.4（PATCH：仅文档措辞）；clientInfo 与 `--skill-version` 默认值同步更新；工作流与写入行为无任何变化。
+
 ## [1.0.3] - 2026-09-08
 
 ### Fixed / 修复

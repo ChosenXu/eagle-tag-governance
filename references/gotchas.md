@@ -43,18 +43,18 @@
 
 ## Call shape (schema-wrapping mistakes)
 
-- **Array params: pass plain JSON arrays, never wrap in `{item: …}`.** The WorkBuddy MCP wrapper does **no** transformation — it validates your `params` verbatim against the server's JSON schema. So `operations` / `tags` / `names` MUST be `[{…}, {…}]`, and `ids` MUST be `["…"]`. Wrapping like `{operations: [...]}` or `{tags: [...]}` violates `additionalProperties:false` and returns a schema error. This is a call-shape mistake, not a tool-chain bug.
-- **Different failure mode:** the rule above is about wrapper *validation* of your payload. In some sessions the wrapper additionally rejects even *correctly-formed* arrays with `/operations: must be array` — that is a serialization quirk, covered in the next section; drive those writes through `scripts/apply_tag_governance.py` instead.
+- **Array params: pass plain JSON arrays, never wrap in `{item: …}`.** The host agent's tool-calling layer passes MCP params through verbatim — it validates against the server's JSON schema without transformation. So `operations` / `tags` / `names` MUST be `[{…}, {…}]`, and `ids` MUST be `["…"]`. Wrapping like `{operations: [...]}` or `{tags: [...]}` violates `additionalProperties:false` and returns a schema error. This is a call-shape mistake, not a tool-chain bug.
+- **Different failure mode:** the rule above is about the client's *validation* of your payload. In some sessions the tool-calling layer may additionally reject even *correctly-formed* arrays with `/operations: must be array` — that is a serialization quirk, covered in the next section; drive those writes through `scripts/apply_tag_governance.py` instead.
 
 ## Bulk-apply gotchas
 
 - **Never hand-paste a 50+ tag array into a tool call.** Long arrays reliably drop entries when transcribed inline. For large plans, drive `tag_merge` / `tag_update` through `scripts/apply_tag_governance.py` reading from `merge_plan.json`, then re-read the tags afterwards to confirm the result matches the plan.
 - **Save the undo mapping first.** Export `tag_undo_mapping.json` (source→target / old→new) *before* the first write. Without it, a bad merge is unrecoverable through MCP.
 
-## WorkBuddy harness may reject array params (tag_merge / tag_update)
+## Some host agents may reject array params (tag_merge / tag_update)
 
-- **Symptom:** calling `tag_merge` / `tag_update` with a correctly-formed `operations` / `tags` array returns `/operations: must be array` (or `/tags: must be array`) — even for a single-element array. This is a harness/tool-wrapper serialization limitation, **not** a problem with your payload.
-- **Workaround:** do not fight the inline tool call. Drive the writes through `scripts/apply_tag_governance.py`, which speaks JSON-RPC to the MCP proxy directly and bypasses the wrapper. Dry-run first (no `--apply`), review, then `--apply`. The script also validates for cycles and `source == target`.
+- **Symptom:** calling `tag_merge` / `tag_update` with a correctly-formed `operations` / `tags` array returns `/operations: must be array` (or `/tags: must be array`) — even for a single-element array. This is a host-client tool-wrapper serialization limitation, **not** a problem with your payload.
+- **Workaround:** do not fight the inline tool call. Drive the writes through `scripts/apply_tag_governance.py`, which speaks JSON-RPC to the Eagle MCP proxy directly and bypasses the client's tool-calling layer. Dry-run first (no `--apply`), review, then `--apply`. The script also validates for cycles and `source == target`.
 - **Scope:** this affects only the *write* calls that take array params. Read calls (`tag_get`, `tag_count`, `item_query`) work through the normal tool call. (If `item_query` returns 0 for tags that clearly have items, the Eagle search index is also stale post-edit — restart Eagle / re-open the library to refresh; rely on the apply script's per-op `affectedItems` for item-level truth.)
 - *Not the same as the schema-wrapping mistake in the previous section:* that one fails on malformed params; this one rejects well-formed arrays. When in doubt, drive the writes through the script either way.
 

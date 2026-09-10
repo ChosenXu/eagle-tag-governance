@@ -2,7 +2,7 @@
 
 [English](../README.md) | 简体中文
 
-一个 [WorkBuddy](https://www.workbuddy.cn/) Skill，通过 `eagle-mcp` 连接器治理 [Eagle](https://eagle.cool/) 素材库的**标签词表**——合并、重命名、规范化、去重与退役已有标签，让标签体系保持干净一致。
+一个符合 [Agent Skills](https://agentskills.io) 开放标准的 Skill，通过 `eagle-mcp` MCP 服务器治理 [Eagle](https://eagle.cool/) 素材库的**标签词表**——合并、重命名、规范化、去重与退役已有标签，让标签体系保持干净一致。可在任何兼容 Agent Skills 标准的 AI Agent 中运行（WorkBuddy、Claude Code、Cursor、Codex 等）。
 
 ## 它能做什么
 
@@ -24,19 +24,39 @@
 
 ## 安装
 
-将本仓库克隆到 WorkBuddy 的 skills 目录：
+将 Skill 文件夹安装到你的 AI Agent 的 skills 目录：
+
+| Agent | 用户级 skills 目录 | MCP 配置文件 |
+|---|---|---|
+| WorkBuddy | `~/.workbuddy/skills/` | `~/.workbuddy/mcp.json` |
+| Claude Code | `~/.claude/skills/` | `.mcp.json` 或 `claude mcp add` |
+| Cursor | `~/.cursor/skills/`（也会读取 `~/.claude/skills/`） | `~/.cursor/mcp.json` |
+| Codex CLI | `~/.agents/skills/` | `~/.codex/config.toml` |
 
 ```bash
 git clone https://github.com/ChosenXu/eagle-tag-governance.git \
-  ~/.workbuddy/skills/eagle-tag-governance
+  <skills目录>/eagle-tag-governance
 ```
 
-或手动将文件夹复制到 `~/.workbuddy/skills/`。
+或手动将文件夹复制到你所用 Agent 的 skills 目录。
 
 ## 前置条件
 
 - Eagle 桌面应用必须处于运行状态。
-- `eagle-mcp` 必须在 `~/.workbuddy/mcp.json` 中配置，并在连接器面板中信任。
+- `eagle-mcp` 必须在你的 Agent 的 MCP 配置中注册为 stdio MCP 服务器：
+
+```json
+{
+  "mcpServers": {
+    "eagle-mcp": {
+      "command": "node",
+      "args": ["<用户目录>/Library/Application Support/Eagle/Plugins/mcp-server/modules/mcp-proxy.js"]
+    }
+  }
+}
+```
+
+> Codex CLI 使用 TOML 格式：在 `~/.codex/config.toml` 中添加 `[mcp_servers.eagle-mcp]`，设 `command = "node"`、`args = ["<用户目录>/Library/Application Support/Eagle/Plugins/mcp-server/modules/mcp-proxy.js"]`。
 
 ## 用法
 
