@@ -44,6 +44,7 @@ import os
 import queue
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 
@@ -57,16 +58,34 @@ DEFAULT_PROXY_CANDIDATES = [
 
 class MCPClient:
     def __init__(self, proxy):
+        # stderr goes to a temp file, NOT subprocess.PIPE: an undrained pipe
+        # fills its OS buffer (~64KB) and stalls the node child mid-run —
+        # worst case during --apply. The file also keeps the proxy's error
+        # output available for diagnosis (see stderr_tail).
+        self._err = tempfile.TemporaryFile()
         self.p = subprocess.Popen(
             ["node", proxy],
             stdin=subprocess.PIPE, stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE, text=True, bufsize=1,
+            stderr=self._err, text=True, bufsize=1,
         )
         self.q = queue.Queue()
         self.lock = threading.Lock()
         self.t = threading.Thread(target=self._reader, daemon=True)
         self.t.start()
         self._id = 0
+
+    def stderr_tail(self, limit=2000):
+        """Return the last `limit` chars of the proxy's stderr (best effort)."""
+        try:
+            self._err.seek(0, os.SEEK_END)
+            size = self._err.tell()
+            self._err.seek(max(0, size - limit))
+            data = self._err.read()
+            if isinstance(data, bytes):
+                data = data.decode("utf-8", "replace")
+            return data
+        except Exception:
+            return ""
 
     def _reader(self):
         for line in self.p.stdout:
@@ -102,7 +121,7 @@ class MCPClient:
             "jsonrpc": "2.0", "id": rid, "method": "initialize",
             "params": {
                 "protocolVersion": "2024-11-05", "capabilities": {},
-                "clientInfo": {"name": "eagle-tag-governance", "version": "1.0.6"},
+                "clientInfo": {"name": "eagle-tag-governance", "version": "1.0.7"},
             },
         })
         init = self._wait(rid, 30)
@@ -126,6 +145,10 @@ class MCPClient:
                 pass
         try:
             self.p.terminate()
+        except Exception:
+            pass
+        try:
+            self._err.close()
         except Exception:
             pass
 
@@ -176,6 +199,29 @@ def order_merges(merges):
         remaining = nxt
     ordered.extend(remaining)
     return ordered
+
+
+def fold_retire(plan):
+    """Fold retire-with-target into merges BEFORE validation.
+
+    A retire entry carrying a `target` is a merge in disguise. Folding must
+    happen BEFORE validate_plan so the folded entries go through the same
+    cycle / sanity checks — otherwise a `retire` entry can close a merge
+    cycle (a->b merge + b->a retire) that `plan["merges"]` alone does not
+    contain, and the run would silently execute a wrong-direction merge.
+    Retire entries missing `tag` abort with a friendly message.
+    """
+    renames = list(plan.get("renames", []) or [])
+    merges = list(plan.get("merges", []) or [])
+    manual_retire = []
+    for r in (plan.get("retire", []) or []):
+        if not isinstance(r, dict) or not r.get("tag"):
+            sys.exit(f"error: retire entry missing 'tag': {r!r}")
+        if r.get("target"):
+            merges.append({"source": r["tag"], "target": r["target"]})
+        else:
+            manual_retire.append(r)
+    return merges, renames, manual_retire
 
 
 def validate_plan(plan):
@@ -374,19 +420,14 @@ def main():
     with open(args.payload, encoding="utf-8") as f:
         plan = json.load(f)
 
-    merges, renames, errors = validate_plan(plan)
+    # Fold retire-with-target into merges BEFORE validation, so folded
+    # entries are cycle-checked and sanity-checked like explicit merges.
+    merges, renames, manual_retire = fold_retire(plan)
+    merges, renames, errors = validate_plan({"merges": merges, "renames": renames})
     if errors:
         for e in errors:
             print("error:", e)
         sys.exit("validation failed; aborting (no writes performed)")
-
-    # Fold retire-with-target into merges; collect manual retire steps.
-    manual_retire = []
-    for r in (plan.get("retire", []) or []):
-        if r.get("target"):
-            merges.append({"source": r["tag"], "target": r["target"]})
-        else:
-            manual_retire.append(r)
 
     ordered_merges = order_merges(merges)
 
@@ -406,8 +447,12 @@ def main():
     client = MCPClient(resolve_proxy(args.proxy))
     init = client.initialize()
     if init is None:
+        tail = client.stderr_tail()
         client.close()
-        sys.exit("error: MCP initialize failed (is Eagle running?)")
+        msg = "error: MCP initialize failed (is Eagle running?)"
+        if tail:
+            msg += "\nproxy stderr tail:\n" + tail
+        sys.exit(msg)
     print("initialize: OK")
 
     total_req = 0
@@ -608,6 +653,28 @@ def selftest():
         ord_ = order_merges([{"source": "a", "target": "b"}, {"source": "b", "target": "c"}])
         assert ord_[0]["source"] == "a", "merge order wrong (a must apply before b)"
     _run("find_cycle / order_merges correct", _t_cycle_order)
+
+    def _t_fold_retire_cycle():
+        # A retire-with-target entry can close a cycle that plan["merges"]
+        # alone does not contain — folding must happen before validation.
+        plan = {
+            "merges": [{"source": "a", "target": "b"}],
+            "renames": [],
+            "retire": [{"tag": "b", "target": "a"}],
+        }
+        merges, renames, manual = fold_retire(plan)
+        assert merges == [{"source": "a", "target": "b"},
+                          {"source": "b", "target": "a"}], "retire-with-target not folded"
+        assert find_cycle(merges) is True, "cycle from folded retire not detected"
+        assert manual == [], "no manual retire expected"
+    _run("fold_retire folds retire-with-target; cycle caught after fold", _t_fold_retire_cycle)
+
+    def _t_fold_retire_manual():
+        plan = {"merges": [], "renames": [], "retire": [{"tag": "x", "note": "n"}]}
+        merges, renames, manual = fold_retire(plan)
+        assert merges == [], "no merge expected"
+        assert manual == [{"tag": "x", "note": "n"}], "retire-without-target must stay manual"
+    _run("fold_retire keeps retire-without-target manual", _t_fold_retire_manual)
 
     def _t_duplicates():
         occ = {"瑞士风": 5, "扁平色": 4, "极简": 1}

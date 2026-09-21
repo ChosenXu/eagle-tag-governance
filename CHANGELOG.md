@@ -6,6 +6,22 @@ All notable changes to this skill are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 格式参考 Keep a Changelog，版本号遵循语义化版本（SemVer）。
 
+## [1.0.7] - 2026-09-21
+
+### Fixed / 修复
+
+- The MCP proxy's stderr is no longer captured into an unread pipe: an undrained pipe can fill its OS buffer (~64KB) and stall the node child mid-run — worst case during `--apply`, leaving writes half-applied with misleading statuses. stderr now goes to a temporary file, and the tail of that file is printed when the MCP handshake fails, so proxy errors are diagnosable instead of lost.
+  修复 MCP 代理 stderr 写入无人读取的管道：管道缓冲区写满（约 64KB）会让 node 子进程在执行中途停住——最坏发生在 `--apply` 写入期间，留下「写了一半 + 状态误导」的现场。stderr 现改为写入临时文件，且 MCP 握手失败时打印该文件末尾内容，代理报错可定位而不再丢失。
+- `retire` entries carrying a `target` are now folded into `merges` **before** validation, so the folded entries go through the same merge-cycle check; previously a `retire` entry could close a cycle (a→b merge + b→a retire) that `plan["merges"]` alone did not contain, and the run would silently execute a wrong-direction merge (deleting the canonical tag and keeping the variant). Retire entries missing `tag` now abort with a friendly message instead of a raw KeyError.
+  携带 `target` 的 `retire` 条目改在**校验之前**折叠进 `merges`，折叠结果同样接受合并环检测；此前 `retire` 条目可能构成仅凭 `plan["merges"]` 检测不到的环（a→b 合并 + b→a 退役），运行会静默执行错误方向的合并（删掉规范标签、留下变体）。缺失 `tag` 的 retire 条目现以友好报错终止，而非裸 KeyError。
+- Selftest extended with two offline checks covering the retire-folding logic (fold + cycle detection, and retire-without-target staying manual).
+  自检新增两项离线检查，覆盖 retire 折叠逻辑（折叠后的环检测、无目标退役保持手动）。
+
+### Notes / 说明
+
+- Version bumped 1.0.6 → 1.0.7 (PATCH: reliability fixes to the execution script; no workflow or authorization-gate changes).
+  版本 1.0.6 → 1.0.7（PATCH：执行脚本可靠性修复；工作流与授权门禁无变化）。
+
 ## [1.0.6] - 2026-09-10
 
 ### Changed / 变更
