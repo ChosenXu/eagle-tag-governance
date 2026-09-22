@@ -6,6 +6,28 @@ All notable changes to this skill are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 格式参考 Keep a Changelog，版本号遵循语义化版本（SemVer）。
 
+## [1.0.8] - 2026-09-21
+
+### Fixed / 修复
+
+- A `tag_merge` / `tag_update` call that gets NO response from the proxy (timeout / hang) is now marked `NO-RESPONSE` and treated as an authoritative failure; previously it was reported as `OK?` and misread downstream as a "stale index", sending the user to restart Eagle for a call that never completed.
+  `tag_merge` / `tag_update` 调用得不到代理任何响应（超时 / 卡住）时，现标记为 `NO-RESPONSE` 并按权威失败处理；此前被标成 `OK?`，在后续校验里被误读为「索引滞后」，引导用户去重启 Eagle，而实际调用根本没有完成。
+- The pre-flight tag read now catches plans built from a stale dump: any merge source / rename `oldName` not present in the library aborts BEFORE the first write; previously a merge of a non-existent source was silently reported as `OK`.
+  写入前的标签预读现在能拦住基于过期导出构建的计划：任何 merge 源 / rename `oldName` 在库中不存在时，在**首次写入之前**终止；此前合并一个不存在的标签会被静默记为 `OK`。
+- Renames whose `newName` collides with an existing tag or a merge target, or whose `oldName` is consumed by an auto-create rename, now abort with an explanation — `tag_update` onto an existing name copies the tag instead of merging (verified Eagle behavior), so these are silent-corruption paths.
+  `newName` 与已存在标签或合并目标撞名、`oldName` 被自动创建改名占用的 rename，现以明确说明终止——`tag_update` 改成已存在的名字会复制标签而非合并（已实测的 Eagle 行为），属于静默破坏路径。
+- `--apply` now enforces Hard Constraint #5 in code: it refuses to run until the undo mapping (`tag_undo_mapping.json`) exists AND its recorded plan digest matches the payload (pass `--undo-map <path>` to point at it, `--undo-map -` to skip).
+  `--apply` 现在把硬约束 #5 落进代码：撤销映射（`tag_undo_mapping.json`）存在、且其记录的计划摘要与当前载荷一致才允许执行（`--undo-map <path>` 指定路径，`--undo-map -` 跳过检查）。
+- The apply run is wrapped in try/finally: the proxy connection is always closed (with wait/kill, no orphan node process), and a lost connection mid-run reports the partial per-op state instead of a bare traceback.
+  apply 执行段改为 try/finally 包裹：代理连接必定被关闭（含 wait/kill，不留孤儿 node 进程）；运行中连接丢失时输出已完成操作的部分状态，而非裸 traceback。
+
+### Notes / 说明
+
+- Selftest extended to 11 offline checks (NO-RESPONSE status, pre-flight collision / clash / missing-source detection).
+  自检扩展至 11 项离线检查（NO-RESPONSE 状态、预检的撞名 / 冲突 / 缺失源检测）。
+- Version bumped 1.0.7 → 1.0.8 (PATCH: reliability hardening of the execution script; workflow and authorization gates unchanged).
+  版本 1.0.7 → 1.0.8（PATCH：执行脚本可靠性加固；工作流与授权门禁无变化）。
+
 ## [1.0.7] - 2026-09-21
 
 ### Fixed / 修复

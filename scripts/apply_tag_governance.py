@@ -21,9 +21,14 @@ Safety design:
     post-write tag re-read. Any source that survives, or any duplicate-named
     tag (a mis-aimed rename that copied instead of folded), is reported as a
     failure — NOT silently counted as success.
-  - The process exits non-zero when any op reports `ZERO-MOVE` / an error, or
-    when duplicate-named tags are detected after the run — automation and
+  - The process exits non-zero when any op reports `ZERO-MOVE` / an error /
+    `NO-RESPONSE` (proxy timeout — never guessed as success), or when
+    duplicate-named tags are detected after the run — automation and
     agents can rely on the exit code instead of parsing the log.
+  - `--apply` refuses to run until the undo mapping (`tag_undo_mapping.json`)
+    exists AND was exported from this exact plan (sha-checked), enforcing
+    Hard Constraint #5 in code; pass `--undo-map <path>` to point at it or
+    `--undo-map -` to skip the check.
 
 Usage:
     # Preview only (no writes):
@@ -39,6 +44,7 @@ applied.
 """
 
 import argparse
+import hashlib
 import json
 import os
 import queue
@@ -121,7 +127,7 @@ class MCPClient:
             "jsonrpc": "2.0", "id": rid, "method": "initialize",
             "params": {
                 "protocolVersion": "2024-11-05", "capabilities": {},
-                "clientInfo": {"name": "eagle-tag-governance", "version": "1.0.7"},
+                "clientInfo": {"name": "eagle-tag-governance", "version": "1.0.8"},
             },
         })
         init = self._wait(rid, 30)
@@ -145,8 +151,12 @@ class MCPClient:
                 pass
         try:
             self.p.terminate()
+            self.p.wait(timeout=5)
         except Exception:
-            pass
+            try:
+                self.p.kill()
+            except Exception:
+                pass
         try:
             self._err.close()
         except Exception:
@@ -363,6 +373,18 @@ def _apply_batch_with_retry(client, tool, batch, pre_counts, label, retry_zero=T
     """
     key = "operations" if tool == "tag_merge" else "tags"
     res = client.call_tool(tool, {key: batch})
+    if res is None:
+        # No response at all (timeout / proxy hang). Do NOT guess "OK?" —
+        # that would be misread as "stale index" downstream. Mark every op
+        # in this batch NO-RESPONSE so the final verification treats them
+        # as authoritative failures.
+        for op in batch:
+            src = op.get("source") or op.get("oldName")
+            if src and op_status is not None:
+                op_status[src] = "NO-RESPONSE"
+        print(f"    {label} batch: NO-RESPONSE from proxy (timeout) — "
+              f"{len(batch)} op(s) unverified")
+        return
     per = _extract_per_op(res)
     for i, op in enumerate(batch):
         src = op.get("source") or op.get("oldName")
@@ -399,6 +421,61 @@ def _apply_batch_with_retry(client, tool, batch, pre_counts, label, retry_zero=T
             op_status[src] = status
 
 
+def _plan_digest(path):
+    """sha256[:16] of the plan file — the same value export_undo_mapping.py
+    records in `meta.planSha256_16`, used to prove the undo mapping was
+    exported from THIS exact plan."""
+    with open(path, encoding="utf-8") as f:
+        text = f.read()
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()[:16]
+
+
+def preflight_problems(ordered_merges, renames, create_renames, existing):
+    """Return a list of human-readable problems that must abort the run
+    BEFORE the first write. All checks are offline, against the pre-write
+    tag read (`existing`):
+
+      - every merge source / rename oldName must already exist — a plan
+        built from a stale dump would otherwise "succeed" merging tags
+        that are not there (pre=None used to be reported as OK);
+      - no rename may target an existing tag name or any merge target:
+        `tag_update` onto an existing name COPIES the tag (duplicate)
+        instead of merging (verified Eagle behavior — gotchas Symptom B),
+        and a rename onto a merge target races with the auto-create;
+      - no explicit rename may consume a source already consumed by an
+        auto-create rename (that source no longer exists by then).
+    """
+    problems = []
+    merge_targets = {m["target"] for m in ordered_merges}
+
+    missing = sorted(
+        ({m["source"] for m in ordered_merges} | {r["oldName"] for r in renames})
+        - set(existing)
+    )
+    if missing:
+        problems.append(
+            "plan references tags that do not exist (stale plan? re-run "
+            "tag_get and rebuild): " + ", ".join(repr(s) for s in missing)
+        )
+
+    collisions = [r for r in renames
+                  if r["newName"] in existing or r["newName"] in merge_targets]
+    if collisions:
+        lines = ["rename target already exists — tag_update would COPY, not "
+                 "merge (use tag_merge into it instead, or pick a free name):"]
+        lines += [f"  - {r['oldName']!r} -> {r['newName']!r}" for r in collisions]
+        problems.append("\n".join(lines))
+
+    consumed = {r["oldName"] for r in create_renames}
+    clash = [r for r in renames if r["oldName"] in consumed]
+    if clash:
+        lines = ["rename source is also consumed by an auto-create rename "
+                 "(remove one of the two operations):"]
+        lines += [f"  - {r['oldName']!r} -> {r['newName']!r}" for r in clash]
+        problems.append("\n".join(lines))
+    return problems
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--payload", default=None, help="reviewed merge_plan.json")
@@ -407,6 +484,9 @@ def main():
     ap.add_argument("--merge-tool", default="tag_merge", help="MCP tool for merges")
     ap.add_argument("--rename-tool", default="tag_update", help="MCP tool for renames")
     ap.add_argument("--apply", action="store_true", help="actually perform writes (default: dry-run)")
+    ap.add_argument("--undo-map", default="tag_undo_mapping.json",
+                    help="undo mapping file required with --apply, sha-checked "
+                         "against the payload ('-' to skip the check)")
     ap.add_argument("--selftest", action="store_true", help="run offline unit checks (no Eagle)")
     args = ap.parse_args()
 
@@ -443,6 +523,31 @@ def main():
         print("\nDRY-RUN: no writes performed. Re-run with --apply to execute.")
         return
 
+    # Hard Constraint #5, enforced in code: the undo mapping must exist AND
+    # have been exported from this exact plan before any write.
+    if args.undo_map != "-":
+        if not os.path.isfile(args.undo_map):
+            sys.exit(
+                f"error: undo mapping not found: {args.undo_map}\n"
+                f"export it BEFORE writing:\n"
+                f"  python3 export_undo_mapping.py --plan {args.payload} "
+                f"--output {args.undo_map}\n"
+                f"(pass --undo-map - to skip this check)"
+            )
+        digest = _plan_digest(args.payload)
+        try:
+            with open(args.undo_map, encoding="utf-8") as f:
+                recorded = json.load(f).get("meta", {}).get("planSha256_16")
+        except Exception:
+            recorded = None
+        if recorded and recorded != digest:
+            sys.exit(
+                f"error: {args.undo_map} was exported from a DIFFERENT plan "
+                f"(recorded sha {recorded}, this plan sha {digest}) — "
+                f"re-export it before writing"
+            )
+        print(f"undo mapping verified: {args.undo_map} (plan sha256[:16] {digest})")
+
     print("\nAPPLY requested — connecting to Eagle via MCP...")
     client = MCPClient(resolve_proxy(args.proxy))
     init = client.initialize()
@@ -459,130 +564,157 @@ def main():
     total_ok = 0
     op_status = {}   # source/oldName -> final per-op status (authoritative)
 
-    # --- Pre-flight: make sure every merge target already exists. ----------
-    # Known proxy quirk: tag_merge silently no-ops (and still returns
-    # isError=false) when the target tag does not exist. To guarantee the
-    # merge lands, auto-create any missing target by renaming ONE of its
-    # source tags into it (a rename both creates the target and consumes that
-    # source), then merge the remaining sources into the now-existing target.
-    existing, pre_counts, _ = _read_tags(client)
-    create_renames = []
-    final_merges = []
-    if existing is None:
-        print("WARNING: could not read current tags; skipping auto-create. "
-              "Merges into missing targets may silently fail (verification "
-              "below will still catch this).")
-        final_merges = list(ordered_merges)
-    else:
-        targets_created = set()
-        for m in ordered_merges:
-            if m["target"] not in existing and m["target"] not in targets_created:
-                create_renames.append({"oldName": m["source"], "newName": m["target"]})
-                existing.add(m["target"])
-                targets_created.add(m["target"])
-                # this source is consumed by the rename; don't merge it again
-            else:
-                final_merges.append(m)
-
-    total_req = len(ordered_merges) + len(renames)
-
-    # 1) Create missing targets (rename ONE source -> target). This both
-    #    creates the target and consumes that source. Per-op logged; the final
-    #    cross-check catches any duplicate-name collision this may cause.
-    if create_renames:
-        print(f"\nAuto-creating {len(create_renames)} missing target tag(s) "
-              f"by renaming a source into it:")
-        for r in create_renames:
-            print(f"  CREATE  {r['oldName']!r} -> {r['newName']!r}")
-        batches = [create_renames[i:i + args.batch] for i in range(0, len(create_renames), args.batch)]
-        for bi, batch in enumerate(batches, 1):
-            print(f"  create batch {bi}/{len(batches)}:")
-            _apply_batch_with_retry(client, args.rename_tool, batch, pre_counts, "CREATE", retry_zero=False, op_status=op_status)
-
-    # 2) Apply the remaining merges. Each op's affectedItems is parsed from the
-    #    live response; an op claiming success but moving 0 items for a
-    #    non-empty source is retried (proxy race on session-created targets).
-    if final_merges:
-        batches = [final_merges[i:i + args.batch] for i in range(0, len(final_merges), args.batch)]
-        for bi, batch in enumerate(batches, 1):
-            print(f"\n  merge batch {bi}/{len(batches)}:")
-            _apply_batch_with_retry(client, args.merge_tool, batch, pre_counts, "MERGE", retry_zero=True, op_status=op_status)
-
-    # 3) Apply any explicit renames from the plan (per-op logged only; the
-    #    final cross-check detects duplicate-name collisions).
-    if renames:
-        batches = [renames[i:i + args.batch] for i in range(0, len(renames), args.batch)]
-        for bi, batch in enumerate(batches, 1):
-            print(f"\n  rename batch {bi}/{len(batches)}:")
-            _apply_batch_with_retry(client, args.rename_tool, batch, pre_counts, "RENAME", retry_zero=False, op_status=op_status)
-
-    # --- Verification: re-read tags and confirm each op actually applied. --
-    # NOTE: the Eagle search/index can lag programmatic edits for several
-    # seconds. The per-op affectedItems parsed live from the proxy response is
-    # the AUTHORITATIVE signal; this post-read is a secondary cross-check and
-    # may under-report while the index is stale. A fresh `tag_get` after
-    # re-opening the library is the final source of truth.
-    print("\nRe-reading tags for cross-check (index may lag — see note above)...")
-    after, after_counts, after_occ = _read_tags(client)
-    dups = []
-    if after is None:
-        print("WARNING: verification skipped — could not re-read tags.")
-    else:
-        removed = [m["source"] for m in ordered_merges if m["source"] not in after]
-        still = [m["source"] for m in ordered_merges if m["source"] in after]
-        target_set = set(m["target"] for m in ordered_merges)
-        targets_present = [t for t in target_set if t in after]
-        print(f"\nVERIFY  sources removed : {len(removed)}/{len(ordered_merges)}")
-        print(f"VERIFY  targets present : {len(targets_present)}/{len(target_set)}")
-        # Split "still present" into authoritative failures (the live per-op
-        # verdict said the op did NOT move anything) vs. likely stale index
-        # (per-op OK but the tag still shows in this re-read).
-        hard = [s for s in still if op_status.get(s) in ("ZERO-MOVE", "ERR", None)]
-        soft = [s for s in still if op_status.get(s) in ("OK", "OK?")]
-        if hard:
-            print("FAILED (source still present — op did not verify):")
-            for s in hard:
-                print(f"  - {s!r}")
-        if soft:
-            print("NOTE (source still listed but per-op reported OK — likely a stale index;")
-            print("       restart Eagle / re-open the library and re-read to confirm):")
-            for s in soft:
-                print(f"  - {s!r}")
-        # CRITICAL: duplicate-named tags = a mis-aimed rename created a copy
-        # instead of folding into the existing tag. This is the exact bug that
-        # slipped past the old isError-only check and silently doubled tags.
-        dups = _detect_duplicates(after_occ)
-        if dups:
-            print("\nCRITICAL: duplicate tag names detected (rename copied, not merged):")
-            for n in dups:
-                print(f"  - {n!r} appears {after_occ[n]} times; merge manually in Eagle UI")
-        # Account for explicit renames so the summary is symmetric with
-        # `requested` (merges + renames). A rename is verified when its oldName
-        # is gone, its newName exists, and that newName is not duplicated
-        # (a duplicated target means the rename copied instead of folding).
-        if renames:
-            dup_names = set(dups)
-            verified_rn = [r for r in renames
-                           if r["oldName"] not in after and r["newName"] in after
-                           and r["newName"] not in dup_names]
-            print(f"VERIFY  renames applied : {len(verified_rn)}/{len(renames)}")
-            for r in renames:
-                if r not in verified_rn:
-                    st = op_status.get(r["oldName"])
-                    if r["newName"] in dup_names:
-                        hint = "duplicate target (rename copied, not merged)"
-                    elif st in ("OK", "OK?"):
-                        hint = "stale index? per-op OK"
-                    else:
-                        hint = "op did not verify"
-                    print(f"  UNVERIFIED {r['oldName']!r} -> {r['newName']!r} "
-                          f"({hint}; per-op={st})")
-            total_ok = len(removed) + len(verified_rn)
+    try:
+        # --- Pre-flight: make sure every merge target already exists. ------
+        # Known proxy quirk: tag_merge silently no-ops (and still returns
+        # isError=false) when the target tag does not exist. To guarantee the
+        # merge lands, auto-create any missing target by renaming ONE of its
+        # source tags into it (a rename both creates the target and consumes
+        # that source), then merge the remaining sources into the now-existing
+        # target.
+        existing, pre_counts, _ = _read_tags(client)
+        create_renames = []
+        final_merges = []
+        if existing is None:
+            print("WARNING: could not read current tags; skipping auto-create. "
+                  "Merges into missing targets may silently fail (verification "
+                  "below will still catch this).")
+            final_merges = list(ordered_merges)
         else:
-            total_ok = len(removed)
+            targets_created = set()
+            for m in ordered_merges:
+                if m["target"] not in existing and m["target"] not in targets_created:
+                    create_renames.append({"oldName": m["source"], "newName": m["target"]})
+                    existing.add(m["target"])
+                    targets_created.add(m["target"])
+                    # this source is consumed by the rename; don't merge it again
+                else:
+                    final_merges.append(m)
 
-    client.close()
-    failed_ops = sorted(k for k, v in op_status.items() if v in ("ZERO-MOVE", "ERR"))
+            # Pre-flight conflicts (missing sources / rename collisions) abort
+            # BEFORE the first write — both are silent-corruption paths.
+            problems = preflight_problems(ordered_merges, renames, create_renames, existing)
+            if problems:
+                print("PREFLIGHT FAILED — aborting before any write:")
+                for p in problems:
+                    print("  - " + p)
+                sys.exit("fix the plan and re-run (no writes performed)")
+
+        total_req = len(ordered_merges) + len(renames)
+
+        # 1) Create missing targets (rename ONE source -> target). This both
+        #    creates the target and consumes that source. Per-op logged; the
+        #    final cross-check catches any duplicate-name collision this may
+        #    cause.
+        if create_renames:
+            print(f"\nAuto-creating {len(create_renames)} missing target tag(s) "
+                  f"by renaming a source into it:")
+            for r in create_renames:
+                print(f"  CREATE  {r['oldName']!r} -> {r['newName']!r}")
+            batches = [create_renames[i:i + args.batch] for i in range(0, len(create_renames), args.batch)]
+            for bi, batch in enumerate(batches, 1):
+                print(f"  create batch {bi}/{len(batches)}:")
+                _apply_batch_with_retry(client, args.rename_tool, batch, pre_counts, "CREATE", retry_zero=False, op_status=op_status)
+
+        # 2) Apply the remaining merges. Each op's affectedItems is parsed from
+        #    the live response; an op claiming success but moving 0 items for a
+        #    non-empty source is retried (proxy race on session-created
+        #    targets).
+        if final_merges:
+            batches = [final_merges[i:i + args.batch] for i in range(0, len(final_merges), args.batch)]
+            for bi, batch in enumerate(batches, 1):
+                print(f"\n  merge batch {bi}/{len(batches)}:")
+                _apply_batch_with_retry(client, args.merge_tool, batch, pre_counts, "MERGE", retry_zero=True, op_status=op_status)
+
+        # 3) Apply any explicit renames from the plan (per-op logged only; the
+        #    final cross-check detects duplicate-name collisions).
+        if renames:
+            batches = [renames[i:i + args.batch] for i in range(0, len(renames), args.batch)]
+            for bi, batch in enumerate(batches, 1):
+                print(f"\n  rename batch {bi}/{len(batches)}:")
+                _apply_batch_with_retry(client, args.rename_tool, batch, pre_counts, "RENAME", retry_zero=False, op_status=op_status)
+
+        # --- Verification: re-read tags and confirm each op applied. -------
+        # NOTE: the Eagle search/index can lag programmatic edits for several
+        # seconds. The per-op affectedItems parsed live from the proxy
+        # response is the AUTHORITATIVE signal; this post-read is a secondary
+        # cross-check and may under-report while the index is stale. A fresh
+        # `tag_get` after re-opening the library is the final source of truth.
+        print("\nRe-reading tags for cross-check (index may lag — see note above)...")
+        after, after_counts, after_occ = _read_tags(client)
+        dups = []
+        if after is None:
+            print("WARNING: verification skipped — could not re-read tags.")
+        else:
+            removed = [m["source"] for m in ordered_merges if m["source"] not in after]
+            still = [m["source"] for m in ordered_merges if m["source"] in after]
+            target_set = set(m["target"] for m in ordered_merges)
+            targets_present = [t for t in target_set if t in after]
+            print(f"\nVERIFY  sources removed : {len(removed)}/{len(ordered_merges)}")
+            print(f"VERIFY  targets present : {len(targets_present)}/{len(target_set)}")
+            # Split "still present" into authoritative failures (the live
+            # per-op verdict said the op did NOT move anything, or never got
+            # a response) vs. likely stale index (per-op OK but the tag still
+            # shows in this re-read).
+            hard = [s for s in still if op_status.get(s) in ("ZERO-MOVE", "ERR", "NO-RESPONSE", None)]
+            soft = [s for s in still if op_status.get(s) in ("OK", "OK?")]
+            if hard:
+                print("FAILED (source still present — op did not verify):")
+                for s in hard:
+                    print(f"  - {s!r}")
+            if soft:
+                print("NOTE (source still listed but per-op reported OK — likely a stale index;")
+                print("       restart Eagle / re-open the library and re-read to confirm):")
+                for s in soft:
+                    print(f"  - {s!r}")
+            # CRITICAL: duplicate-named tags = a mis-aimed rename created a
+            # copy instead of folding into the existing tag. This is the
+            # exact bug that slipped past the old isError-only check and
+            # silently doubled tags.
+            dups = _detect_duplicates(after_occ)
+            if dups:
+                print("\nCRITICAL: duplicate tag names detected (rename copied, not merged):")
+                for n in dups:
+                    print(f"  - {n!r} appears {after_occ[n]} times; merge manually in Eagle UI")
+            # Account for explicit renames so the summary is symmetric with
+            # `requested` (merges + renames). A rename is verified when its
+            # oldName is gone, its newName exists, and that newName is not
+            # duplicated (a duplicated target means the rename copied instead
+            # of folding).
+            if renames:
+                dup_names = set(dups)
+                verified_rn = [r for r in renames
+                               if r["oldName"] not in after and r["newName"] in after
+                               and r["newName"] not in dup_names]
+                print(f"VERIFY  renames applied : {len(verified_rn)}/{len(renames)}")
+                for r in renames:
+                    if r not in verified_rn:
+                        st = op_status.get(r["oldName"])
+                        if r["newName"] in dup_names:
+                            hint = "duplicate target (rename copied, not merged)"
+                        elif st in ("OK", "OK?"):
+                            hint = "stale index? per-op OK"
+                        elif st == "NO-RESPONSE":
+                            hint = "no response from proxy (timeout)"
+                        else:
+                            hint = "op did not verify"
+                        print(f"  UNVERIFIED {r['oldName']!r} -> {r['newName']!r} "
+                              f"({hint}; per-op={st})")
+                total_ok = len(removed) + len(verified_rn)
+            else:
+                total_ok = len(removed)
+    except OSError:
+        # BrokenPipeError et al.: the proxy connection died mid-run. Report
+        # the partial per-op state instead of dying with a bare traceback.
+        print("\nERROR: proxy connection lost mid-run (Eagle or the node proxy exited).")
+        print("Partial per-op state so far (re-read the tags to see what actually landed):")
+        for k in sorted(op_status):
+            print(f"  - {k!r}: {op_status[k]}")
+        sys.exit(1)
+    finally:
+        client.close()
+
+    failed_ops = sorted(k for k, v in op_status.items() if v in ("ZERO-MOVE", "ERR", "NO-RESPONSE"))
     print(f"\nrequested={total_req} verified_ok={total_ok}")
     if manual_retire:
         print("\nManual retire steps remain (not auto-applied):")
@@ -675,6 +807,35 @@ def selftest():
         assert merges == [], "no merge expected"
         assert manual == [{"tag": "x", "note": "n"}], "retire-without-target must stay manual"
     _run("fold_retire keeps retire-without-target manual", _t_fold_retire_manual)
+
+    def _t_no_response():
+        # A call that times out must be NO-RESPONSE, never guessed "OK?".
+        class _DeadClient:
+            def call_tool(self, name, args, timeout=120):
+                return None
+        st = {}
+        _apply_batch_with_retry(
+            _DeadClient(), "tag_merge", [{"source": "a", "target": "b"}],
+            {"a": 5}, "MERGE", retry_zero=True, op_status=st)
+        assert st == {"a": "NO-RESPONSE"}, f"expected NO-RESPONSE, got {st}"
+    _run("call without response marked NO-RESPONSE (not OK?)", _t_no_response)
+
+    def _t_preflight():
+        existing = {"b", "x", "y"}
+        merges = [{"source": "x", "target": "z"}]
+        create = [{"oldName": "x", "newName": "z"}]
+        # rename onto an existing name -> collision (Symptom B path)
+        problems = preflight_problems(merges, [{"oldName": "y", "newName": "b"}], create, existing)
+        assert len(problems) == 1 and "'y' -> 'b'" in problems[0], problems
+        # rename consuming an auto-created source -> clash
+        problems = preflight_problems(merges, [{"oldName": "x", "newName": "q"}], create, existing)
+        assert len(problems) == 1 and "auto-create" in problems[0], problems
+        # merge source that does not exist -> stale plan
+        problems = preflight_problems([{"source": "ghost", "target": "b"}], [], [], existing)
+        assert len(problems) == 1 and "stale plan" in problems[0], problems
+        # clean plan -> no problems
+        assert preflight_problems(merges, [{"oldName": "y", "newName": "fresh"}], create, existing) == []
+    _run("preflight catches collisions, clashes and missing sources", _t_preflight)
 
     def _t_duplicates():
         occ = {"瑞士风": 5, "扁平色": 4, "极简": 1}
