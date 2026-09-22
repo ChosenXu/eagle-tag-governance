@@ -43,8 +43,10 @@ be named `count`, `usageCount`, or `items` (number of items using the tag).
 import argparse
 import datetime
 import json
+import os
 import re
 import sys
+import unicodedata
 
 
 def load_tags(path):
@@ -112,8 +114,10 @@ def load_canonical(args):
 
 
 def norm(name):
-    """Normalize for variant clustering: lowercase, drop whitespace."""
-    return name.lower().replace(" ", "").replace("\t", "")
+    """Normalize for variant clustering: NFKC fold (full-width -> half-width,
+    compatibility forms), casefold, and drop ALL whitespace — including the
+    full-width U+3000 and NBSP that appear in CJK tags."""
+    return "".join(unicodedata.normalize("NFKC", name).casefold().split())
 
 
 def pick_target(members, counts, canonical_set):
@@ -162,15 +166,20 @@ def build_plan(tags, canonical_set, low_count, min_cluster):
             used.add(target)
 
     # --- 2b: singleton canonical-casing deviation ---
+    # Precompute normalized canonical names once (O(C)) so the per-tag scan
+    # is a dict lookup instead of re-normalizing every canonical name for
+    # every tag (previously O(N x C)).
+    norm_canon = {}
+    for c in canonical_set:
+        norm_canon.setdefault(norm(c), c)
     for name in existing:
         if name in used:
             continue
-        for c in canonical_set:
-            if c != name and norm(c) == norm(name):
-                renames.append({"oldName": name, "newName": c})
-                used.add(name)
-                used.add(c)
-                break
+        c = norm_canon.get(norm(name))
+        if c and c != name:
+            renames.append({"oldName": name, "newName": c})
+            used.add(name)
+            used.add(c)
 
     # --- 3: low-frequency retire candidates ---
     retire = []
@@ -222,8 +231,12 @@ def main():
         "retire": retire,
     }
 
-    with open(args.output, "w", encoding="utf-8") as f:
+    # Atomic write: dump to a temp file then os.replace, so an interrupted
+    # run never leaves a half-written plan behind.
+    tmp = args.output + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
         json.dump(plan, f, ensure_ascii=False, indent=2)
+    os.replace(tmp, args.output)
 
     print(f"wrote {args.output}")
     print(f"  tags parsed      : {len(tags)}")

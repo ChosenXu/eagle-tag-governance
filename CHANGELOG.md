@@ -6,6 +6,31 @@ All notable changes to this skill are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 格式参考 Keep a Changelog，版本号遵循语义化版本（SemVer）。
 
+## [1.0.9] - 2026-09-22
+
+### Fixed / 修复
+
+- Variant clustering in `build_tag_plan.py` now normalizes with NFKC + casefold and drops ALL whitespace (including the full-width U+3000 and NBSP common in CJK tags); previously only ASCII spaces/tabs and `lower()` were handled, so pairs like `海报` / `海　报` or `ＵＩ` / `ui` never clustered into merge suggestions.
+  `build_tag_plan.py` 的变体聚类规范化升级为 NFKC + casefold + 移除全部空白（含中文标签常见的全角空格 U+3000 与不间断空格）；此前只处理半角空格/tab 加 `lower()`，`海报` / `海　报`、`ＵＩ` / `ui` 这类变体永远不会聚成合并建议。
+- `export_undo_mapping.py` validates the plan before building the audit — a malformed entry (missing `tag` / `oldName` / `newName` / `source` / `target`) now aborts with a friendly message instead of a raw KeyError.
+  `export_undo_mapping.py` 在生成审计前先校验计划——缺失 `tag` / `oldName` / `newName` / `source` / `target` 的条目现以友好报错终止，而非裸 KeyError。
+- A missing `node` binary and a JSON-RPC error on MCP initialize now abort with friendly messages instead of a bare traceback.
+  `node` 可执行文件缺失、MCP 初始化返回 JSON-RPC 错误时，现以友好信息终止，而非裸 traceback。
+
+### Changed / 变更
+
+- The plan file is read exactly once by `export_undo_mapping.py` (the digest is computed from the same text, so the two can no longer disagree); the singleton-casing scan in `build_tag_plan.py` precomputes normalized canonical names, turning an O(N×C) scan into O(N) lookups on large vocabularies.
+  `export_undo_mapping.py` 只读一次计划文件（摘要基于同一段文本计算，二者不再可能不一致）；`build_tag_plan.py` 的大小写规范扫描预计算规范化后的规范名，把 O(N×C) 扫描降为 O(N) 查表，大词表下更快。
+- `merge_plan.json` is written atomically (temp file + rename) — an interrupted run can no longer leave a half-written plan behind.
+  `merge_plan.json` 改为原子写入（临时文件 + 改名）——中途中断不会再留下写了一半的计划文件。
+- The skill version is single-sourced from `SKILL.md`: the MCP clientInfo and the `--skill-version` default read it instead of hardcoding the number in each script.
+  版本号单一来源于 `SKILL.md`：MCP clientInfo 与 `--skill-version` 默认值改为读取它，不再在各脚本里手工硬编码。
+
+### Notes / 说明
+
+- Version bumped 1.0.8 → 1.0.9 (PATCH: robustness and performance polish of the helper scripts; write behavior unchanged).
+  版本 1.0.8 → 1.0.9（PATCH：辅助脚本的健壮性与性能打磨；写入行为无变化）。
+
 ## [1.0.8] - 2026-09-21
 
 ### Fixed / 修复

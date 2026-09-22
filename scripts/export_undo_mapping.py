@@ -28,27 +28,58 @@ import argparse
 import datetime
 import hashlib
 import json
+import os
+import re
 import sys
+
+
+def _skill_version():
+    """Read the version from the skill's SKILL.md (single source of truth)."""
+    path = os.path.join(
+        os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "SKILL.md")
+    try:
+        with open(path, encoding="utf-8") as f:
+            m = re.search(r"^version:\s*(\S+)", f.read(), re.MULTILINE)
+        if m:
+            return m.group(1)
+    except OSError:
+        pass
+    return "unknown"
 
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--plan", required=True, help="reviewed merge_plan.json")
     ap.add_argument("--output", default="tag_undo_mapping.json", help="path to write the undo map")
-    ap.add_argument("--skill-version", default="1.0.8", help="skill version for the record")
+    ap.add_argument("--skill-version", default=None,
+                    help="skill version for the record (default: read from SKILL.md)")
     args = ap.parse_args()
 
+    # Read the plan file ONCE; the digest comes from the same text.
     with open(args.plan, encoding="utf-8") as f:
-        plan = json.load(f)
+        plan_text = f.read()
+    plan = json.loads(plan_text)
+    digest = hashlib.sha256(plan_text.encode("utf-8")).hexdigest()[:16]
 
-    merges = list(plan.get("merges", []) or [])
     renames = list(plan.get("renames", []) or [])
-    retire = plan.get("retire", []) or []
+    retire = list(plan.get("retire", []) or [])
+    merges = list(plan.get("merges", []) or [])
+
+    # Validate before building the audit — friendly errors, no raw KeyError.
+    for r in renames:
+        if not isinstance(r, dict) or not r.get("oldName") or not r.get("newName"):
+            sys.exit(f"error: rename entry missing oldName/newName: {r!r}")
+    for r in retire:
+        if not isinstance(r, dict) or not r.get("tag"):
+            sys.exit(f"error: retire entry missing 'tag': {r!r}")
 
     # Fold retire-with-target into merges for a complete audit.
     for r in retire:
         if r.get("target"):
             merges.append({"source": r["tag"], "target": r["target"]})
+    for m in merges:
+        if not isinstance(m, dict) or not m.get("source") or not m.get("target"):
+            sys.exit(f"error: merge entry missing source/target: {m!r}")
 
     rename_undo = []
     for r in renames:
@@ -73,15 +104,11 @@ def main():
         for r in retire if not r.get("target")
     ]
 
-    with open(args.plan, encoding="utf-8") as f:
-        plan_text = f.read()
-    digest = hashlib.sha256(plan_text.encode("utf-8")).hexdigest()[:16]
-
     undo = {
         "meta": {
             "source": "export_undo_mapping.py",
             "generatedAt": datetime.datetime.now().isoformat(timespec="seconds"),
-            "skillVersion": args.skill_version,
+            "skillVersion": args.skill_version or _skill_version(),
             "planSha256_16": digest,
             "warning": "tag_merge is irreversible; merges are audit-only and cannot be auto-undone.",
         },

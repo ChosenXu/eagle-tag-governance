@@ -48,6 +48,7 @@ import hashlib
 import json
 import os
 import queue
+import re
 import subprocess
 import sys
 import tempfile
@@ -62,6 +63,20 @@ DEFAULT_PROXY_CANDIDATES = [
 ]
 
 
+def _skill_version():
+    """Read the version from the skill's SKILL.md (single source of truth)."""
+    path = os.path.join(
+        os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "SKILL.md")
+    try:
+        with open(path, encoding="utf-8") as f:
+            m = re.search(r"^version:\s*(\S+)", f.read(), re.MULTILINE)
+        if m:
+            return m.group(1)
+    except OSError:
+        pass
+    return "unknown"
+
+
 class MCPClient:
     def __init__(self, proxy):
         # stderr goes to a temp file, NOT subprocess.PIPE: an undrained pipe
@@ -69,11 +84,17 @@ class MCPClient:
         # worst case during --apply. The file also keeps the proxy's error
         # output available for diagnosis (see stderr_tail).
         self._err = tempfile.TemporaryFile()
-        self.p = subprocess.Popen(
-            ["node", proxy],
-            stdin=subprocess.PIPE, stdout=subprocess.PIPE,
-            stderr=self._err, text=True, bufsize=1,
-        )
+        try:
+            self.p = subprocess.Popen(
+                ["node", proxy],
+                stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                stderr=self._err, text=True, bufsize=1,
+            )
+        except FileNotFoundError:
+            sys.exit("error: 'node' not found — install Node.js "
+                     "(https://nodejs.org) and make sure it is on PATH")
+        except OSError as e:
+            sys.exit(f"error: failed to start the MCP proxy: {e}")
         self.q = queue.Queue()
         self.lock = threading.Lock()
         self.t = threading.Thread(target=self._reader, daemon=True)
@@ -127,10 +148,13 @@ class MCPClient:
             "jsonrpc": "2.0", "id": rid, "method": "initialize",
             "params": {
                 "protocolVersion": "2024-11-05", "capabilities": {},
-                "clientInfo": {"name": "eagle-tag-governance", "version": "1.0.8"},
+                "clientInfo": {"name": "eagle-tag-governance", "version": _skill_version()},
             },
         })
         init = self._wait(rid, 30)
+        if init is not None and init.get("error"):
+            print(f"MCP initialize error: {init['error']}")
+            return None
         self._send({"jsonrpc": "2.0", "method": "notifications/initialized"})
         return init
 
@@ -337,7 +361,6 @@ def _extract_per_op(res):
                 out.append(obj)
     # Fallback: regex-scan for affectedItems if JSON parsing yielded nothing.
     if not out:
-        import re
         blob = " ".join(chunks)
         for m in re.finditer(r'"affectedItems"\s*:\s*(\d+)', blob):
             out.append({"affectedItems": int(m.group(1))})
