@@ -97,9 +97,9 @@ references/
   gotchas.md                 # tag-operation pitfalls (irreversible, name-based, no tag_delete…)
   merge-templates.md         # merge_plan schema & examples
 scripts/
-  apply_tag_governance.py    # bulk-apply tag_merge / tag_update via MCP stdio proxy (stage 3)
-  build_tag_plan.py          # build merge_plan.json from analysis (stage 3)
-  export_undo_mapping.py     # export tag_undo_mapping.json before write (stage 3)
+  apply_tag_governance.py    # bulk-apply tag_merge / tag_update via MCP stdio proxy (Phase 4)
+  build_tag_plan.py          # build merge_plan.json from analysis (Phase 2→3a)
+  export_undo_mapping.py     # export tag_undo_mapping.json before write (pre-write)
 ```
 
 ## License

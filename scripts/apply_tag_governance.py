@@ -379,6 +379,22 @@ def _detect_duplicates(occurrences):
     return sorted(n for n, o in occurrences.items() if o > 1)
 
 
+def _new_duplicates(before, after):
+    """Return sorted names whose tag-object count grew to >1 during this run.
+
+    Only NEW duplicate-named tags indicate a mis-aimed rename in THIS run. A
+    library that already held duplicate-named tags (gotchas.md documents the
+    5x 瑞士风 / 4x 扁平色 case) must not fail an otherwise-clean run, so we
+    compare against the pre-write baseline (name -> occurrence
+    count) instead of flagging any count > 1.
+    """
+    if not after:
+        return []
+    before = before or {}
+    return sorted(n for n, o in after.items()
+                  if o > 1 and o > before.get(n, 0))
+
+
 def _apply_batch_with_retry(client, tool, batch, pre_counts, label, retry_zero=True, op_status=None):
     """Send one batch, parse per-op results, and (for merges) retry any op
     that reported affectedItems=0 while its source actually had items.
@@ -542,6 +558,11 @@ def main():
     for r in manual_retire:
         print(f"  MANUAL  retire {r['tag']!r} ({r.get('note','no target — strip via item_remove_tags or delete in Eagle UI')})")
 
+    if not ordered_merges and not renames:
+        print("\nNothing to write: the plan has no merges or renames"
+              + (" (only manual-retire steps, above)." if manual_retire else "."))
+        return
+
     if not args.apply:
         print("\nDRY-RUN: no writes performed. Re-run with --apply to execute.")
         return
@@ -563,7 +584,15 @@ def main():
                 recorded = json.load(f).get("meta", {}).get("planSha256_16")
         except Exception:
             recorded = None
-        if recorded and recorded != digest:
+        if recorded is None:
+            sys.exit(
+                f"error: {args.undo_map} is not a valid undo mapping "
+                f"(missing meta.planSha256_16, or the file is unreadable/"
+                f"truncated). Re-export it BEFORE writing:\n"
+                f"  python3 export_undo_mapping.py --plan {args.payload} "
+                f"--output {args.undo_map}"
+            )
+        if recorded != digest:
             sys.exit(
                 f"error: {args.undo_map} was exported from a DIFFERENT plan "
                 f"(recorded sha {recorded}, this plan sha {digest}) — "
@@ -595,7 +624,7 @@ def main():
         # source tags into it (a rename both creates the target and consumes
         # that source), then merge the remaining sources into the now-existing
         # target.
-        existing, pre_counts, _ = _read_tags(client)
+        existing, pre_counts, pre_occ = _read_tags(client)
         create_renames = []
         final_merges = []
         if existing is None:
@@ -694,7 +723,7 @@ def main():
             # copy instead of folding into the existing tag. This is the
             # exact bug that slipped past the old isError-only check and
             # silently doubled tags.
-            dups = _detect_duplicates(after_occ)
+            dups = _new_duplicates(pre_occ, after_occ)
             if dups:
                 print("\nCRITICAL: duplicate tag names detected (rename copied, not merged):")
                 for n in dups:

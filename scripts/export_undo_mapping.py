@@ -117,8 +117,13 @@ def main():
         "manualRetire": manual_retire,
     }
 
-    with open(args.output, "w", encoding="utf-8") as f:
+    # Atomic write: temp file + os.replace so an interrupted run never leaves
+    # a truncated undo map behind (a truncated map would otherwise look
+    # "present but invalid" to apply_tag_governance.py's digest gate).
+    tmp = args.output + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
         json.dump(undo, f, ensure_ascii=False, indent=2)
+    os.replace(tmp, args.output)
 
     print(f"wrote {args.output}")
     print(f"  plan sha256[:16] : {digest}")

@@ -6,6 +6,31 @@ All notable changes to this skill are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 格式参考 Keep a Changelog，版本号遵循语义化版本（SemVer）。
 
+## [1.0.10] - 2026-11-08
+
+### Fixed / 修复
+
+- The `--apply` undo-map gate no longer accepts an empty or truncated `tag_undo_mapping.json`: a missing or invalid `meta.planSha256_16` now aborts hard instead of being printed as "verified", and only a digest that matches the current plan is allowed through. (`export_undo_mapping.py` also writes the map atomically, so an interrupted run cannot leave a truncated file behind.)
+  `--apply` 的撤销门禁不再放行空的或截断的 `tag_undo_mapping.json`：缺失或无效的 `meta.planSha256_16` 现直接报错终止，不再被打印成「verified」，只有与当前计划一致的摘要才放行。（`export_undo_mapping.py` 同时改为原子写，中断不会再留下截断文件。）
+- `build_tag_plan.py` now steers every multi-member cluster to the normative spelling from `vocabulary*.md`, even when that exact spelling is not yet in the library; previously the target was always an existing member, so a cluster could silently merge into a non-canonical variant such as `dashboard` instead of `Dashboard`. When the canonical spelling is absent it is now created by renaming one member, and the rest merge into it.
+  `build_tag_plan.py` 现在把每个多成员簇导向 `vocabulary*.md` 里的规范拼写，即使该拼写尚未出现在库中；此前目标只会在现有成员里选，簇可能被静默合并进非规范变体（如 `dashboard` 而非 `Dashboard`）。规范拼写缺席时，现用一个成员改名创建它，其余成员再并入。
+- Verification no longer fails a clean run just because the library already held duplicate-named tags (gotchas documents the 5× `瑞士风` / 4× `扁平色` case); duplicate detection now compares against a pre-write baseline and only flags names whose count actually grew during the run.
+  校验不再因为库中原本就存在重名标签（gotchas 记录的 5× `瑞士风` / 4× `扁平色` 情形）而把一次干净的运行判为失败；重名检测改为对比写前基线，只标记本次运行中数量确实增加的名字。
+- A plan containing only manual-retire steps (no merges or renames) now stops with a clear "Nothing to write" message instead of connecting to Eagle for nothing.
+  只含手动退役步骤（无合并、无重命名）的计划现在以明确的「Nothing to write」结束，不再为空跑一次 Eagle 连接。
+
+### Changed / 变更
+
+- Added an offline `tests/` suite (`python -m unittest discover -s tests`, stdlib only) covering NFKC/case/space clustering, canonical-target selection, retire thresholding, the digest gate (empty/truncated rejected, valid passes) and baseline-aware duplicate detection; CI's test step now actually executes it.
+  新增离线 `tests/` 套件（`python -m unittest discover -s tests`，仅用标准库），覆盖 NFKC/大小写/空白聚类、规范目标选择、低频退役阈值、摘要门禁（空/截断被拒、有效放行）以及基于基线的重名检测；CI 的测试步骤现在会真正执行它。
+- The README structure block now labels the three scripts by their real phase (Phase 4 / Phase 2→3a / pre-write) instead of "(stage 3)".
+  README 结构块现按真实阶段标注三个脚本（Phase 4 / Phase 2→3a / pre-write），不再是笼统的 "(stage 3)"。
+
+### Notes / 说明
+
+- Version bumped 1.0.9 → 1.0.10 (PATCH: bug fixes and tests; no workflow or authorization-gate changes). The MCP clientInfo and `--skill-version` default both read `SKILL.md`, so they follow this bump automatically.
+  版本号 1.0.9 → 1.0.10（PATCH：缺陷修复与测试；工作流与授权门禁无变化）。MCP clientInfo 与 `--skill-version` 默认值均读取 `SKILL.md`，随本次 bump 自动生效。
+
 ## [1.0.9] - 2026-09-22
 
 ### Fixed / 修复

@@ -141,14 +141,31 @@ def build_plan(tags, canonical_set, low_count, min_cluster):
     for name in existing:
         clusters.setdefault(norm(name), []).append(name)
 
+    # Precompute normalized canonical names once (O(C)); reused to steer a
+    # cluster to the normative spelling and by the singleton scan (2b) below,
+    # so the per-tag work stays O(N) dict lookups, not O(N x C).
+    norm_canon = {}
+    for c in canonical_set:
+        norm_canon.setdefault(norm(c), c)
+
     for key, members in clusters.items():
         members = list(dict.fromkeys(members))  # dedupe, keep order
         if len(members) < min_cluster:
             continue
-        target = pick_target(members, counts, canonical_set)
+
+        # Target = the normative spelling for this cluster if one exists —
+        # EVEN WHEN that exact spelling is not yet in the library (otherwise
+        # the plan could only keep a non-canonical member and would silently
+        # codify the drift). Fall back to the most-frequent member only when
+        # the cluster has no normative target at all.
+        target = norm_canon.get(key)
+        if target is None:
+            target = pick_target(members, counts, canonical_set)
         existing_members = [m for m in members if m in existing]
 
-        # Rename one existing member into target if target does not yet exist.
+        # If the chosen target name is not present yet, rename one member into
+        # it (this creates the normative tag and consumes that member); the
+        # rest merge into the now-existing target.
         rename_candidate = None
         if target not in existing:
             rename_candidate = sorted(
@@ -156,6 +173,8 @@ def build_plan(tags, canonical_set, low_count, min_cluster):
             )[0]
             renames.append({"oldName": rename_candidate, "newName": target})
             used.add(rename_candidate)
+            used.add(target)
+        else:
             used.add(target)
 
         for m in existing_members:
@@ -166,12 +185,7 @@ def build_plan(tags, canonical_set, low_count, min_cluster):
             used.add(target)
 
     # --- 2b: singleton canonical-casing deviation ---
-    # Precompute normalized canonical names once (O(C)) so the per-tag scan
-    # is a dict lookup instead of re-normalizing every canonical name for
-    # every tag (previously O(N x C)).
-    norm_canon = {}
-    for c in canonical_set:
-        norm_canon.setdefault(norm(c), c)
+    # norm_canon is precomputed above and reused here.
     for name in existing:
         if name in used:
             continue
